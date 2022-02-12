@@ -1,0 +1,7 @@
+[DEFAULT]
+# Fill in information below and rename to imap_filter.conf
+
+host = imap.gmail.com
+
+username = yourusername@gmail.com
+password = yourpassword
