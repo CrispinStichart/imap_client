@@ -1,0 +1,7 @@
+emails.db
+emails.sqbpro
+imap_filter.conf
+last_seen_date.txt
+notes.txt
+.idea/
+__pycache__/
