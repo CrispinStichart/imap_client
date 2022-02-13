@@ -1,4 +1,5 @@
 import datetime
+import queue
 
 import imapclient
 from imapclient import IMAPClient
@@ -53,7 +54,7 @@ def load_filter_modules() -> dict:
 
     # Not sure how kosher this all is, I've never done any dynamic
     # loading of modules before.
-    for file in p.parent.glob("filters/*.py"):
+    for file in sorted(p.parent.glob("filters/*.py")):
         if file.name not in ["__init__.py", "mail_filter.py"]:
             log.debug(f"loading module from: {file}")
             spec = importlib.util.spec_from_file_location("filters." + file.name, file)
@@ -107,22 +108,29 @@ def fetch_email(msg_id: int) -> EmailMessage:
     return email_message
 
 
-def filter_thread(download_q: Queue):
+def filter_thread(download_q: Queue, shutdown_event: threading.Event):
     filter_modules = load_filter_modules()
     filter_classes = get_filter_classes_from_modules(filter_modules)
 
     while True:
-        response: Response = download_q.get()
-        msg = fetch_email(response.msg_id)
+        # We check the queue every couple of second, and spend the rest
+        # of the time waiting on a shutdown event. so we can join this
+        # thread.
+        try:
+            response: Response = download_q.get_nowait()
+            msg = fetch_email(response.msg_id)
 
-        for name, filter_c in filter_classes.items():
-            log.debug(f"Sending message {response.msg_id} to {name} ")
-            processed = filter_c.filter(msg)
-            log.debug(f"Processed: {processed}")
-            # filters will return true if they deleted or moved
-            # the message, such that any other filters may have
-            # undefined behavior.
-            if processed:
+            for name, filter_c in filter_classes.items():
+                log.debug(f"Sending message {response.msg_id} to {name} ")
+                processed = filter_c.filter(msg)
+                log.debug(f"Processed: {processed}")
+                # filters will return true if they deleted or moved
+                # the message, such that any other filters may have
+                # undefined behavior.
+                if processed:
+                    break
+        except queue.Empty:
+            if shutdown_event.wait(2.0):
                 break
 
 
@@ -177,38 +185,51 @@ def main():
 
         download_q: Queue = Queue()
 
-        fetcher_thread = threading.Thread(target=filter_thread, args=(download_q,))
+        shutdown_event = threading.Event()
+        fetcher_thread = threading.Thread(
+            target=filter_thread, args=(download_q, shutdown_event)
+        )
         fetcher_thread.start()
 
+        # TODO:
+
         while True:
-            log.debug(f"Searching for messages above UID {last_checked_uid}")
-            # Note: UID ranges are inclusive. "*" is the hightest UID in the inbox.
-            results = client.search(["UID", last_checked_uid + 1, ":*"])
-            for uid in results:
-                log.debug(f"Putting UID={uid} into download queue")
-                download_q.put(Response(uid, b"EXISTS"))
+            try:
+                log.debug(f"Searching for messages above UID {last_checked_uid}")
+                # Note: UID ranges are inclusive. "*" is the hightest UID in the inbox.
+                results = client.search(f"UID {str(last_checked_uid + 1)}:*")
+                for uid in results:
+                    log.debug(f"Putting UID={uid} into download queue")
+                    download_q.put(Response(uid, b"EXISTS"))
 
-            # From what I can tell reading the docs, the search result
-            # isn't guaranteed to return the UIDs in order.
-            last_checked_uid = max(results)
+                # From what I can tell reading the docs, the search result
+                # isn't guaranteed to return the UIDs in order.
+                last_checked_uid = max(results)
 
-            # Save the new last_seen
-            with open(LAST_SEEN_FILENAME, "w") as f:
-                f.write(str(last_checked_uid))
+                # Save the new last_seen
+                with open(LAST_SEEN_FILENAME, "w") as f:
+                    f.write(str(last_checked_uid))
 
-            # Note: when IDLEing, the IMAP server does not return UIDs
-            # for emails, it returns the message ID, which don't persist
-            # between sessions and may be reassigned by certain
-            # operations. So whenver there's activity, we poll the
-            # server for messages based on the date of the most recently
-            # seen email.
-            client.idle()
-            log.info("Client is now in IDLE mode, waiting for response...")
-            log.debug("Waiting for IDLE response...")
-            response = client.idle_check(60 * 5)
-            log.debug(f"Got IDLE response: {response}")
-            log.debug("Exiting IDLE mode")
-            client.idle_done()
+                # Note: when IDLEing, the IMAP server does not return UIDs
+                # for emails, it returns the message ID, which don't persist
+                # between sessions and may be reassigned by certain
+                # operations. So whenver there's activity, we poll the
+                # server for messages based on the date of the most recently
+                # seen email.
+                client.idle()
+                log.info("Client is now in IDLE mode, waiting for response...")
+                log.debug("Waiting for IDLE response...")
+                response = client.idle_check(60 * 5)
+                log.debug(f"Got IDLE response: {response}")
+                log.debug("Exiting IDLE mode")
+                client.idle_done()
+            except KeyboardInterrupt:
+                log.debug("Got keyboard inturupt")
+                shutdown_event.set()
+                break
+
+        log.debug("Waiting for fetch thread to join")
+        fetcher_thread.join()
 
     # date = "1-Jan-2020"
     #
