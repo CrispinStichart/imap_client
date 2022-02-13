@@ -1,17 +1,16 @@
 import configparser
 import importlib.util
-import inspect
 import logging
-import sys
-from pathlib import Path
 import os
 import sqlite3 as sql
+import sys
 from dataclasses import dataclass
-from filters.mail_filter import Filter
-from bs4 import BeautifulSoup
-from filters.political_spam import PoliticalSpam
+from pathlib import Path
+
 from imapclient import IMAPClient
-import main as main_class
+
+import imap_filter_client as main_class
+from filters.political_spam import PoliticalSpam
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
@@ -67,10 +66,6 @@ def load_filter_modules():
             spec.loader.exec_module(module)
 
     return filter_modules
-
-
-from queue import Queue
-from main import Response
 
 
 def main():

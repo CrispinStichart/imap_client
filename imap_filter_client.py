@@ -1,26 +1,23 @@
-import datetime
+import configparser
+import email
+import importlib.util
+import inspect
+import logging
+import os
 import queue
+import sys
+import threading
+from contextlib import contextmanager
+from email import policy
+from email.message import EmailMessage
+from pathlib import Path
+from queue import Queue
+from typing import cast
 
 import imapclient
 from imapclient import IMAPClient
-from email.message import EmailMessage
-import email
-from email import policy
-import sqlite3 as sql
-import configparser
-from contextlib import contextmanager
-from typing import cast
-import logging
-from dataclasses import dataclass
-from queue import Queue
-from pathlib import Path
-import os
-import importlib.util
-import inspect
-import sys
+
 from filters import mail_filter
-import threading
-import os
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
@@ -29,15 +26,6 @@ logging.basicConfig()
 log = logging.getLogger(__name__)
 
 LAST_SEEN_FILENAME = "last_seen_uid.txt"
-
-
-# Simple storage class so we don't have to index into the server's
-# response more than once.
-class Response:
-    def __init__(self, msg_id: int, action, flags=None):
-        self.msg_id: int = msg_id
-        self.action: str = action.decode()
-        # self.flags: flags[]
 
 
 class Envelope:
@@ -117,11 +105,11 @@ def filter_thread(download_q: Queue, shutdown_event: threading.Event):
         # of the time waiting on a shutdown event. so we can join this
         # thread.
         try:
-            response: Response = download_q.get_nowait()
-            msg = fetch_email(response.msg_id)
+            uid: int = download_q.get_nowait()
+            msg = fetch_email(uid)
 
             for name, filter_c in filter_classes.items():
-                log.debug(f"Sending message {response.msg_id} to {name} ")
+                log.debug(f"Sending message {uid} to {name} ")
                 processed = filter_c.filter(msg)
                 log.debug(f"Processed: {processed}")
                 # filters will return true if they deleted or moved
@@ -157,10 +145,9 @@ def establish_connection():
 
 
 def get_last_checked_uid(client: imapclient.IMAPClient, catchup=False):
-    date_filename = "last_seen_date.txt"
     if catchup:
         try:
-            with open(date_filename, "r") as f:
+            with open(LAST_SEEN_FILENAME, "r") as f:
                 uid = int(f.readline().strip())
                 log.debug(f"Read UID from {LAST_SEEN_FILENAME}: {str(uid)}")
                 return uid
@@ -200,7 +187,7 @@ def main():
                 results = client.search(f"UID {str(last_checked_uid + 1)}:*")
                 for uid in results:
                     log.debug(f"Putting UID={uid} into download queue")
-                    download_q.put(Response(uid, b"EXISTS"))
+                    download_q.put(uid)
 
                 # From what I can tell reading the docs, the search result
                 # isn't guaranteed to return the UIDs in order.
@@ -210,12 +197,18 @@ def main():
                 with open(LAST_SEEN_FILENAME, "w") as f:
                     f.write(str(last_checked_uid))
 
-                # Note: when IDLEing, the IMAP server does not return UIDs
-                # for emails, it returns the message ID, which don't persist
-                # between sessions and may be reassigned by certain
-                # operations. So whenver there's activity, we poll the
-                # server for messages based on the date of the most recently
-                # seen email.
+                # Some notes: 1) when IDLEing, the IMAP server does not
+                # return UIDs for emails, it returns the message ID,
+                # which don't persist between sessions and may be
+                # reassigned by certain operations. So whenver there's
+                # activity, we poll the server for messages based on the
+                # date of the most recently seen email. 2) Since idle
+                # mode prevents the server from responding to any other
+                # commands, we have to drop out of idle mode before we
+                # can poll the server. 3) There's a timeout on the IDLE
+                # because the docs recomend it, because the server will
+                # close long-lived socket connections, and IMAPClient
+                # doesn't do anything to keep the connection alive.
                 client.idle()
                 log.info("Client is now in IDLE mode, waiting for response...")
                 log.debug("Waiting for IDLE response...")
@@ -230,43 +223,6 @@ def main():
 
         log.debug("Waiting for fetch thread to join")
         fetcher_thread.join()
-
-    # date = "1-Jan-2020"
-    #
-    # db = sql.connect("emails.db")
-    # c = db.cursor()
-    # c.execute("DROP TABLE IF EXISTS emails")
-    # c.execute("""CREATE TABLE IF NOT EXISTS emails (id, date, sender, subject, body)""")
-    # c.execute("""CREATE UNIQUE INDEX id ON emails (id)""")
-    # with IMAPClient(host=imap_host) as client:
-    #     client.login(imap_user, imap_pass)
-    #     client.enable("UTF8=ACCEPT")
-    #     client.select_folder("INBOX")
-    #     messages = client.search(["SINCE", date])
-    #     for msg_id, data in client.fetch(messages, ["ENVELOPE", "RFC822"]).items():
-    #         envelope = data[b"ENVELOPE"]
-    #         # noinspection PyTypeChecker
-    #         email_message: email.message.EmailMessage = email.message_from_bytes(
-    #             data[b"RFC822"], policy=policy.default
-    #         )
-    #
-    #         body = email_message.get_body(
-    #             preferencelist=("plain", "html")
-    #         ).get_content()
-    #
-    #         print(
-    #             'ID #%d: "%s" received %s'
-    #             % (msg_id, envelope.subject.decode(), envelope.date)
-    #         )
-    #         sender = ",".join(map(str, envelope.from_))
-    #
-    #         c.execute(
-    #             "INSERT INTO emails VALUES (:id, :date, :sender, :subject, :body)",
-    #             (msg_id, envelope.date, sender, envelope.subject.decode(), body),
-    #         )
-    #
-    # db.commit()
-    # db.close()
 
 
 if __name__ == "__main__":
