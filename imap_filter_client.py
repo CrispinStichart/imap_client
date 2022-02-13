@@ -11,6 +11,7 @@ import threading
 from contextlib import contextmanager
 from email import policy
 from email.message import EmailMessage
+from getpass import getpass
 from pathlib import Path
 from queue import Queue
 from typing import cast
@@ -45,15 +46,26 @@ class ImapFilterClient:
 
         self.last_seen_uid = -1
 
-    def load_config(self, command_line_args):
+    def load_config(self, args: dict):
+        log.debug("Loading config")
         config_file = configparser.ConfigParser()
         config_file.read("imap_filter.conf")
 
-        conf = {
-            "host": config_file.get("DEFAULT", "host", fallback=""),
-            "username": config_file.get("DEFAULT", "username", fallback=""),
-            "password": config_file.get("DEFAULT", "password", fallback=""),
-        }
+        conf = {}
+        keys = ["host", "username", "password"]
+
+        for key in keys:
+            conf[key] = args.get(key)
+            if not args.get(key):
+                conf[key] = config_file.get("DEFAULT", key, fallback=None)
+
+        if not conf.get("password"):
+            conf["password"] = getpass()
+
+        for key, value in conf.items():
+            if not value:
+                print(f"Error: {key} not set.")
+                sys.exit(-1)
 
         return conf
 
@@ -164,21 +176,23 @@ class ImapFilterClient:
         if catchup:
             try:
                 with open(LAST_SEEN_FILENAME, "r") as f:
-                    uid = int(f.readline().strip())
-                    log.debug(f"Read UID from {LAST_SEEN_FILENAME}: {str(uid)}")
-                    self.last_seen_uid = uid
-                    return uid
+                    self.last_seen_uid = int(f.readline().strip())
+                    log.debug(
+                        f"Read UID from {LAST_SEEN_FILENAME}: {str(self.last_seen_uid)}"
+                    )
             except FileNotFoundError:
+                log.debug(f"Tried to catch-up, but {LAST_SEEN_FILENAME} doesn't exist.")
                 catchup = False
 
         if not catchup:
             log.debug("Searching for most recent email")
             # The "*" stands for the highest numbered (most recent) UID
-            uid = client.search(["UID", "*"])[0]
+            self.last_seen_uid = client.search(["UID", "*"])[0]
+
             with open(LAST_SEEN_FILENAME, "w") as f:
-                f.write(str(uid))
-            self.last_seen_uid = uid
-            return uid
+                f.write(str(self.last_seen_uid))
+
+        assert self.last_seen_uid != -1
 
     def main(self):
         log.setLevel(logging.DEBUG)
@@ -186,7 +200,6 @@ class ImapFilterClient:
             client: imapclient.IMAPClient
 
             self.get_last_checked_uid(client)
-            assert self.last_seen_uid != -1
 
             download_q: Queue[int] = Queue()
 
@@ -195,8 +208,6 @@ class ImapFilterClient:
                 target=self.filter_thread, args=(download_q, shutdown_event)
             )
             fetcher_thread.start()
-
-            # TODO:
 
             while True:
                 try:
@@ -248,5 +259,11 @@ class ImapFilterClient:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    filter_client = ImapFilterClient()
+    parser.add_argument("--host")
+    parser.add_argument("--username")
+    parser.add_argument("--password")
+    parser.add_argument("--no-catchup", action="store_false")
+    args = parser.parse_args(sys.argv[1:])
+
+    filter_client = ImapFilterClient(vars(args))
     filter_client.main()
