@@ -1,6 +1,6 @@
 emails.db
 emails.sqbpro
-imap_filter.conf
+src/imap_filter_client/imap_filter.conf
 last_seen_uid.txt
 notes.txt
 .idea/

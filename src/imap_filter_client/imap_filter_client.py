@@ -1,3 +1,4 @@
+from __future__ import annotations
 import argparse
 import configparser
 import email
@@ -8,6 +9,7 @@ import os
 import queue
 import sys
 import threading
+from pkg_resources import resource_filename
 from contextlib import contextmanager
 from email import policy
 from email.message import EmailMessage
@@ -19,15 +21,13 @@ from typing import cast
 import imapclient
 from imapclient import IMAPClient
 
-from filters import mail_filter
+from .filters import mail_filter
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
 # from rich import print
 logging.basicConfig()
 log = logging.getLogger(__name__)
-
-LAST_SEEN_FILENAME = "last_seen_uid.txt"
 
 
 class Envelope:
@@ -39,6 +39,9 @@ class Envelope:
 
 class ImapFilterClient:
     def __init__(self, command_line_args=None):
+        self.last_seen_filename = resource_filename(__name__, "last_seen_uid.txt")
+        print(self.last_seen_filename)
+
         self.config = self.load_config(command_line_args)
 
         modules = self.load_filter_modules()
@@ -49,7 +52,7 @@ class ImapFilterClient:
     def load_config(self, args: dict):
         log.debug("Loading config")
         config_file = configparser.ConfigParser()
-        config_file.read("imap_filter.conf")
+        config_file.read(resource_filename(__name__, "imap_filter.conf"))
 
         conf = {}
         keys = ["host", "username", "password"]
@@ -79,6 +82,9 @@ class ImapFilterClient:
         for file in sorted(p.parent.glob("filters/*.py")):
             if file.name not in ["__init__.py", "mail_filter.py"]:
                 log.debug(f"loading module from: {file}")
+                # module = importlib.import_module(
+                #     ".filters." + file.name, "imap_filter_client"
+                # )
                 spec = importlib.util.spec_from_file_location(
                     "filters." + file.name, file
                 )
@@ -175,13 +181,15 @@ class ImapFilterClient:
     def get_last_checked_uid(self, client: imapclient.IMAPClient, catchup=False):
         if catchup:
             try:
-                with open(LAST_SEEN_FILENAME, "r") as f:
+                with open(self.last_seen_filename, "r") as f:
                     self.last_seen_uid = int(f.readline().strip())
                     log.debug(
-                        f"Read UID from {LAST_SEEN_FILENAME}: {str(self.last_seen_uid)}"
+                        f"Read UID from {self.last_seen_filename}: {str(self.last_seen_uid)}"
                     )
             except FileNotFoundError:
-                log.debug(f"Tried to catch-up, but {LAST_SEEN_FILENAME} doesn't exist.")
+                log.debug(
+                    f"Tried to catch-up, but {self.last_seen_filename} doesn't exist."
+                )
                 catchup = False
 
         if not catchup:
@@ -189,7 +197,7 @@ class ImapFilterClient:
             # The "*" stands for the highest numbered (most recent) UID
             self.last_seen_uid = client.search(["UID", "*"])[0]
 
-            with open(LAST_SEEN_FILENAME, "w") as f:
+            with open(self.last_seen_filename, "w") as f:
                 f.write(str(self.last_seen_uid))
 
         assert self.last_seen_uid != -1
@@ -226,7 +234,7 @@ class ImapFilterClient:
                     self.last_seen_uid = results[-1]
 
                     # Save the new last_seen
-                    with open(LAST_SEEN_FILENAME, "w") as f:
+                    with open(self.last_seen_filename, "w") as f:
                         f.write(str(self.last_seen_uid))
 
                     # Some notes: 1) when IDLEing, the IMAP server does not
@@ -257,7 +265,8 @@ class ImapFilterClient:
             fetcher_thread.join()
 
 
-if __name__ == "__main__":
+def entry_point():
+    log.setLevel(logging.DEBUG)
     parser = argparse.ArgumentParser()
     parser.add_argument("--host")
     parser.add_argument("--username")
@@ -267,3 +276,7 @@ if __name__ == "__main__":
 
     filter_client = ImapFilterClient(vars(args))
     filter_client.main()
+
+
+if __name__ == "__main__":
+    entry_point()
