@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-print(__name__)
 import argparse
 import configparser
 import email

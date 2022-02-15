@@ -37,6 +37,10 @@ In `src/imap_filter_client/`, you'll find `imap_filter.conf.template`. Rename it
 
 You can also use the `--host`, `--username`, and `--password` options on the command line to specify those parameters.
 
+Fun fact: Google lets you create "app passwords" that are randomly generated, can be restricted to only accessing one service (e.g. Gmail), and can be revoked at any time. Pretty neat.
+
+https://support.google.com/accounts/answer/185833?hl=en
+
 ## How To Write Filters
 
 Create python file under `src/imap_filter_client/filters/`. At minimum, you need the following:
@@ -66,6 +70,19 @@ I have no defense for this choice, I know it's terrible. On the TODO list is doi
 
 As mentioned above, if you want to talk back to the server (like to move a message to a different folder or delete it) lol good luck with that. 
 
+There's an example filter included, but at the time of the writing it doesn't actually do anything.
+
+Oh, and if a filter returns `True`, no further filters will be run on that message. 
+
 # What's Next
 
 After spending five hours trying to figure why relative imports weren't working, and the answer turning out to be related to the magical way python loads packages, I have developed a strong urge to redo this whole program in Rust.
+  
+Assuming I don't rewrite it in rust, I need to:
+
+* make it easier for the filters to talk to the server
+* make a custom class for the email message object
+  * or just pass the envelope data as a separate object, I somehow only thought of that as I'm writing this <_<
+* package this program better
+  * maybe try out Flit or Poetry
+* write tests or something
