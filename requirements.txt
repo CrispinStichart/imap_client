@@ -1,3 +1,4 @@
 bs4~=0.0.1
 beautifulsoup4~=4.10.0
-setuptools~=57.0.0
+setuptools==60.9.1
+IMAPClient~=2.2.0

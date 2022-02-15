@@ -1,3 +1,5 @@
+.tox/
+.coverage
 emails.db
 emails.sqbpro
 src/imap_filter_client/imap_filter.conf
@@ -5,3 +7,4 @@ last_seen_uid.txt
 notes.txt
 .idea/
 __pycache__
+*.egg-info/

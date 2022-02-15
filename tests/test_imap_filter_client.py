@@ -1,8 +1,9 @@
 from src.imap_filter_client import imap_filter_client
 
+# TODO: tests, lol
+
 
 def test_test():
-    print(imap_filter_client.log)
     assert False
 
 

@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+print(__name__)
 import argparse
 import configparser
 import email
@@ -18,14 +20,12 @@ from pathlib import Path
 from queue import Queue
 from typing import cast
 
-import imapclient
 from imapclient import IMAPClient
 
 from .filters import mail_filter
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
-# from rich import print
 logging.basicConfig()
 log = logging.getLogger(__name__)
 
@@ -39,21 +39,24 @@ class Envelope:
 
 class ImapFilterClient:
     def __init__(self, command_line_args=None):
+        # Needed so the current working directory doesn't matter.
         self.last_seen_filename = resource_filename(__name__, "last_seen_uid.txt")
-        print(self.last_seen_filename)
 
+        # Reading the config file and/or parse command line.
         self.config = self.load_config(command_line_args)
 
+        # Dynamically load all the filters.
         modules = self.load_filter_modules()
         self.filters = self.get_filter_classes_from_modules(modules)
 
+        # Will be used to keep track of the last seen UID.
         self.last_seen_uid = -1
 
     def load_config(self, args: dict):
         log.debug("Loading config")
         config_file = configparser.ConfigParser()
-        config_file.read(resource_filename(__name__, "imap_filter.conf"))
-
+        config_file_path = Path(resource_filename(__name__, "imap_filter.conf"))
+        config_file.read(str(config_file_path))
         conf = {}
         keys = ["host", "username", "password"]
 
@@ -82,16 +85,10 @@ class ImapFilterClient:
         for file in sorted(p.parent.glob("filters/*.py")):
             if file.name not in ["__init__.py", "mail_filter.py"]:
                 log.debug(f"loading module from: {file}")
-                # module = importlib.import_module(
-                #     ".filters." + file.name, "imap_filter_client"
-                # )
-                spec = importlib.util.spec_from_file_location(
-                    "filters." + file.name, file
+                module = importlib.import_module(
+                    ".filters." + file.name[:-3], package="imap_filter_client"
                 )
-                module = importlib.util.module_from_spec(spec)
-                sys.modules[file.name] = module
                 filter_modules[file.name] = module
-                spec.loader.exec_module(module)
 
         return filter_modules
 
@@ -178,7 +175,7 @@ class ImapFilterClient:
             if client:
                 client.logout()
 
-    def get_last_checked_uid(self, client: imapclient.IMAPClient, catchup=False):
+    def get_last_checked_uid(self, client: IMAPClient, catchup=False):
         if catchup:
             try:
                 with open(self.last_seen_filename, "r") as f:
@@ -205,7 +202,7 @@ class ImapFilterClient:
     def main(self):
         log.setLevel(logging.DEBUG)
         with self.establish_connection() as client:
-            client: imapclient.IMAPClient
+            client: IMAPClient
 
             self.get_last_checked_uid(client)
 

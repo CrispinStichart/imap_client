@@ -4,6 +4,7 @@ import re
 from bs4 import BeautifulSoup
 import logging
 import os
+from ..imap_filter_client import log as root_logger
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
@@ -11,8 +12,9 @@ log = logging.getLogger(__name__)
 
 
 class PoliticalSpam(mail_filter.Filter):
-    # TODO: figure out logging better -- inherit from root logger?
-    log.setLevel(logging.DEBUG)
+    # Is this kosher? I just want to inherit the level from the main
+    # script's logger.
+    log.setLevel(root_logger.level)
 
     def __init__(self):
         super().__init__()
@@ -46,14 +48,10 @@ class PoliticalSpam(mail_filter.Filter):
         threshhold = int(len(plaintext) * 0.7)
         if m := regex.search(plaintext, threshhold):
             if m2 := regex2.search(plaintext, threshhold):
-                # print("Percent way through message: ", m.start() / len(plaintext))
                 return True
 
         log.debug(
             f"did not find any matches for email with id={msg.id} and subject: {msg.envelope.subject}"
         )
-
-        # print(f"FAILED: found substring at {m.start()}. Subject: {msg.subject}")
-        # print(m.group(0))
 
         return False
