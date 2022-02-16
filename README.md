@@ -10,9 +10,7 @@ These filters are python scripts written by yourself, so they can do whatever yo
 
 You could use this, I guess. It's technically functional.
 
-One issue is that the filters don't have a simple way of issuing commands back to the mail server. They *can* -- they'd just have to either reimplement all the connection logic, or better (but still bad) import a couple functions from the main `imap_filter_client.py` script. 
-
-Very hacky. I need to do some redesigning.
+It's a bit hacky, and there aren't any tests yet. *I'm* not using it yet, so I can't imagine anyone else would want to...
 
 ## How To Install
 
@@ -48,31 +46,20 @@ Create python file under `src/imap_filter_client/filters/`. At minimum, you need
 ```python
 from . import mail_filter
 from email.message import EmailMessage
+from ..imap_filter_client import Envelope
+from imapclient import IMAPClient
 
-class PoliticalSpam(mail_filter.Filter):
-    def filter(self, msg: EmailMessage):
+class MyFilter(mail_filter.Filter):
+    def filter(self, msg_uid: int, msg: EmailMessage, envelope: Envelope, client: IMAPClient) -> bool:
         pass
 ```
 
-`EmailMessage` is... special. Currently, it's a normal `EmailMessage` object with two things monkey-patched in:
-* an `id` field, holding the message UID
-* a `envelope` field, which is a class defined in `imap_filter_client.py` that looks like this:
+If a filter returns `True`, no further filters will be run on that message. 
 
-```python
-class Envelope:
-    def __init__(self, envelope):
-        self.sender = ",".join(map(str, envelope.from_))
-        self.date = envelope.date
-        self.subject = envelope.subject.decode()
-```
+`client` is an authenticated client; see the `imapclient` documentation for how to use it.
 
-I have no defense for this choice, I know it's terrible. On the TODO list is doing something less dumb than monkey-patching. 
+There's an example filter included (`political_spam.py`, but at the time of the writing it doesn't actually do anything.
 
-As mentioned above, if you want to talk back to the server (like to move a message to a different folder or delete it) lol good luck with that. 
-
-There's an example filter included, but at the time of the writing it doesn't actually do anything.
-
-Oh, and if a filter returns `True`, no further filters will be run on that message. 
 
 # What's Next
 
@@ -80,9 +67,9 @@ After spending five hours trying to figure why relative imports weren't working,
   
 Assuming I don't rewrite it in rust, I need to:
 
-* make it easier for the filters to talk to the server
-* make a custom class for the email message object
-  * or just pass the envelope data as a separate object, I somehow only thought of that as I'm writing this <_<
+* ~~make it easier for the filters to talk to the server~~
+* ~~make a custom class for the email message object~~
+  * ~~or just pass the envelope data as a separate object, I somehow only thought of that as I'm writing this <_<~~
 * package this program better
   * maybe try out Flit or Poetry
 * write tests or something

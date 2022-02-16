@@ -108,7 +108,7 @@ class ImapFilterClient:
 
         return filter_classes
 
-    def fetch_email(self, msg_id: int) -> EmailMessage:
+    def fetch_email(self, msg_id: int) -> tuple:
         # We have to establish a new connection because we put the other
         # connection into idle mode, which causes the server to ignore
         # further commands. We establish a new connection for every new
@@ -125,15 +125,7 @@ class ImapFilterClient:
                     email.message_from_bytes(data[b"RFC822"], policy=policy.default),
                 )
 
-                # Monkey patch the envelope into the message. This is
-                # probably not the best way to handle this.
-                email_message.envelope = Envelope(data[b"ENVELOPE"])
-
-                # Monkey patch the msg_id into the message. Again, probably
-                # not the best way to handle this.
-                email_message.id = msg_id
-
-        return email_message
+        return msg_id, email_message, Envelope(data[b"ENVELOPE"])
 
     def filter_thread(self, download_q: Queue, shutdown_event: threading.Event):
         while True:
@@ -144,15 +136,16 @@ class ImapFilterClient:
                 uid: int = download_q.get_nowait()
                 msg = self.fetch_email(uid)
 
-                for name, filter_c in self.filters.items():
-                    log.debug(f"Sending message {uid} to {name} ")
-                    processed = filter_c.filter(msg)
-                    log.debug(f"Processed: {processed}")
-                    # filters will return true if they deleted or moved
-                    # the message, such that any other filters may have
-                    # undefined behavior.
-                    if processed:
-                        break
+                with self.establish_connection() as client:
+                    for name, filter_c in self.filters.items():
+                        log.debug(f"Sending message {uid} to {name} ")
+                        processed = filter_c.filter(*msg, client)
+                        log.debug(f"Processed: {processed}")
+                        # filters will return true if they deleted or moved
+                        # the message, such that any other filters may have
+                        # undefined behavior.
+                        if processed:
+                            break
             except queue.Empty:
                 if shutdown_event.wait(2.0):
                     break
@@ -160,7 +153,7 @@ class ImapFilterClient:
     @contextmanager
     def establish_connection(self, folder="INBOX"):
         # Instead of using IMAPClient's built in context manager, we use
-        # our own so we can login and set some defaults without repitition.
+        # our own so we can login and set some defaults without repetition.
 
         client = None
         try:

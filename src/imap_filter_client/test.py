@@ -85,7 +85,7 @@ def test_political_spam_filter():
     emails = get_spam_emails_from_db()
     should_not_block = [2432, 2437]
     for e in emails:
-        processed = spam_filter.filter(e)
+        processed = spam_filter.filter(e)  # TODO: update this
         if processed and e.id in should_not_block:
             log.warning(
                 f"Should NOT have blocked id={e.id}, subj: {e.envelope.subject}"

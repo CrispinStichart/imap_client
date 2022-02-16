@@ -5,6 +5,8 @@ from bs4 import BeautifulSoup
 import logging
 import os
 from ..imap_filter_client import log as root_logger
+from ..imap_filter_client import Envelope
+from imapclient import IMAPClient
 
 logging.basicConfig(level=os.environ.get("LOGLEVEL", "INFO"))
 
@@ -19,7 +21,9 @@ class PoliticalSpam(mail_filter.Filter):
     def __init__(self):
         super().__init__()
 
-    def filter(self, msg: EmailMessage):
+    def filter(
+        self, msg_uid: int, msg: EmailMessage, envelope: Envelope, client: IMAPClient
+    ) -> bool:
         """Return true if we did something with the message"""
         soup = BeautifulSoup(
             msg.get_body(preferencelist=("plain", "html")).get_content(), "html.parser"
@@ -51,7 +55,7 @@ class PoliticalSpam(mail_filter.Filter):
                 return True
 
         log.debug(
-            f"did not find any matches for email with id={msg.id} and subject: {msg.envelope.subject}"
+            f"did not find any matches for email with id={msg_uid} and subject: {envelope.subject}"
         )
 
         return False
