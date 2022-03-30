@@ -1,6 +1,13 @@
+# Abandoned
+
+So yeah, after spending a lot of time on this, the dismal state of Python packaging annoyed me *so much* I went and learned Rust and rewrote it. Check it out here:
+
+https://github.com/CrispinStichart/email-liberator
+
+
 # Filter Your Mail However You Want
 
-Have you ever tried to set up automatic filtering in Gmail, only to be disappointed by the lack of features? Than this program *might* be for you!
+Have you ever tried to set up automatic filtering in Gmail, only to be disappointed by the lack of features? Then this program *might* be for you!
 
 In a nutshell, this is a bare-bones mail client that supports IMAP. It's intended to run 24/7 on a server or a pi or whatever. Whenever someone sends you an email, this program immediately downloads it and runs it through whatever filters you have set up.
 
@@ -27,11 +34,11 @@ Packaging python apps is a pain. Honestly, I haven't done it enough times to kno
 * run `pip install -r requirements.txt`
 * run `python -m imap_filter_client.imap_filter_client`
 
-That'll all probably work. I haven't double checked any of those commands because let's be honest, no one is reading this README, and anyone who is probably doesn't need my help.
+That'll all probably work. I haven't double-checked any of those commands because let's be honest, no one is reading this README, and anyone who is probably doesn't need my help.
 
 ## How To Configure
 
-In `src/imap_filter_client/`, you'll find `imap_filter.conf.template`. Rename it to remove the `.template` and edit it with your login info. If you don't like the idea of saving your password to a text file, comment out the `password` line and you'll be prompted at runtime to enter your password.
+In `src/imap_filter_client/`, you'll find `imap_filter.conf.template`. Rename it to remove the `.template` and edit it with your login info. If you don't like the idea of saving your password to a text file, comment out the `password` line, and you'll be prompted at runtime to enter your password.
 
 You can also use the `--host`, `--username`, and `--password` options on the command line to specify those parameters.
 
